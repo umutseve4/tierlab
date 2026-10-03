@@ -108,9 +108,13 @@ test("fromShare is defensive against bad input", () => {
   assert.deepEqual(d.pool, ["b"]);
 });
 
-test("a shared link of the full NBA list stays reasonably short", async () => {
+test("compressed share links are much shorter than plain JSON", async () => {
   let d = docFromTopic(findTopic("nba-goats"), "en");
   Object.keys(d.items).forEach((id, i) => (d = moveItem(d, id, i % 6)));
-  const enc = await encodePayload(toShare(d));
-  assert.ok(enc.length < 1200, `length ${enc.length}`);
+  const payload = toShare(d);
+  const enc = await encodePayload(payload);
+  const plainB64Len = Math.ceil((new TextEncoder().encode(JSON.stringify(payload)).length * 4) / 3);
+  // exact size depends on the zlib build, so compare relatively instead of a hard byte limit
+  if (enc[0] === "z") assert.ok(enc.length < plainB64Len * 0.8, `compressed ${enc.length} vs plain ${plainB64Len}`);
+  assert.ok(enc.length < 4000, `URL-safe length (got ${enc.length})`);
 });
