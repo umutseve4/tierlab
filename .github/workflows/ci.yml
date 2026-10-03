@@ -17,12 +17,17 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - run: node --test tests/*.test.js
+          node-version: ${{ matrix.node }}
+      # spec reporter prints a "failing tests" summary with the reason at the end of the log
+      - run: node --test --test-reporter=spec tests/*.test.js
 
   deploy:
     needs: test

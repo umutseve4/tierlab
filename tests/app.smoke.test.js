@@ -32,13 +32,21 @@ globalThis.window = { addEventListener: (type, fn) => ((listeners["win:" + type]
 globalThis.location = { hash: "", origin: "https://umutseve4.github.io", pathname: "/tierlab/" };
 globalThis.history = { replaceState: (_a, _b, h) => (location.hash = h) };
 globalThis.localStorage = { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) };
-Object.defineProperty(globalThis, "navigator", { value: { language: "tr-TR", clipboard: { writeText: async () => {} } }, configurable: true });
+const fakeNavigator = { language: "tr-TR", clipboard: { writeText: async () => {} } };
+Object.defineProperty(globalThis, "navigator", { value: fakeNavigator, configurable: true, writable: true });
 globalThis.CSS = { escape: (s) => s };
 globalThis.fetch = async () => ({ ok: false, json: async () => ({}) });
 globalThis.confirm = () => true;
+globalThis.prompt = () => null;
 globalThis.matchMedia = () => ({ matches: false });
 
 const tick = () => new Promise((r) => setTimeout(r, 5));
+/** Wait for async work (compression streams, routing) instead of guessing a fixed delay — CI runners are slow. */
+async function until(cond, ms = 5000) {
+  const t0 = Date.now();
+  while (!cond() && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 10));
+  return cond();
+}
 async function go(hash) {
   location.hash = hash;
   for (const fn of listeners["win:hashchange"]) await fn();
@@ -57,8 +65,7 @@ function key(k) {
 
 test("app boots, routes and survives every mode", async () => {
   await import("../js/app.js");
-  await tick();
-  assert.match(appEl.innerHTML, /Kendi listeni yap/, "Turkish home page from navigator.language");
+  assert.ok(await until(() => appEl.innerHTML.includes("Kendi listeni yap")), "Turkish home page from navigator.language");
 
   click({ act: "cat", cat: "food" });
   assert.ok(appEl.innerHTML.includes("turkish-breakfast") && !appEl.innerHTML.includes("#/t/planets"));
@@ -107,14 +114,14 @@ test("app boots, routes and survives every mode", async () => {
   click({ act: "mode", mode: "compare" });
   assert.match(appEl.innerHTML, /class="gauge"/);
 
-  // share link -> open it as a shared view
+  // share link -> open it as a shared view (encoding is async: wait for it)
   let copied = "";
-  navigator.clipboard.writeText = async (u) => { copied = u; };
+  fakeNavigator.clipboard.writeText = async (u) => { copied = u; };
   click({ act: "share" });
-  await tick();
+  assert.ok(await until(() => copied), "share link was copied");
   assert.match(copied, /#\/s\/[zj]/);
   await go(copied.slice(copied.indexOf("#")));
-  assert.match(appEl.innerHTML, /shared view/);
+  assert.ok(await until(() => /shared view/.test(appEl.innerHTML)), "shared link opens");
 
   // custom list + add item + reset + language toggle
   await go("#/t/planets");
